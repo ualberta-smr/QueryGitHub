@@ -102,8 +102,13 @@ class Search:
                 query = self.query
                 try:
                     while len(query) < 256:
-                        query += " repo:" + self.repo_names[i]
-                        i += 1
+                        temp_query = query + " repo:" + self.repo_names[i]
+                        if len(temp_query) > 256:
+                            break
+                        else:
+                            query = temp_query
+                            i += 1
+
                     result = github.search_code(query)
 
                     if result.totalCount > 0:
