@@ -79,7 +79,7 @@ class Search:
                 self.go_to_sleep("Quick nap before resume",
                                  self.config["QUICK_SLEEP"])
             self.write_repo_names_to_file()
-        except:
+        except RuntimeError:
             self.go_to_sleep(
                 "Error: abuse detection mechanism detected.",
                 self.config["ERROR_SLEEP"])
@@ -103,11 +103,11 @@ class Search:
                     if counter % 15 == 0:
                         self.go_to_sleep("Quick nap before resume",
                                          self.config["QUICK_SLEEP"])
-                except:
+                except RuntimeError:
                     self.go_to_sleep(
                         "Error: abuse detection mechanism detected.",
                         self.config["ERROR_SLEEP"])
-        except:
+        except RuntimeError:
             self.go_to_sleep(
                 "Error: abuse detection mechanism detected.",
                 self.config["ERROR_SLEEP"])
