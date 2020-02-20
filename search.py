@@ -9,7 +9,7 @@ class Search:
 
         self.config = self.read_config(config_file)
         self.query = query
-        self.repo_names = set()
+        self.repo_names = []
 
     @staticmethod
     def read_config(config_file):
@@ -18,10 +18,10 @@ class Search:
             for line in file:
                 key, value = line.split("=")
                 if key not in config:
-                    if key == "TOKEN" or key == "REPO_NAMES_FILE":
-                        config[key] = value.strip()
-                    else:
+                    try:
                         config[key] = int(value)
+                    except ValueError:
+                        config[key] = value.strip()
         return config
 
     @staticmethod
@@ -42,7 +42,7 @@ class Search:
     def read_repo_names(self):
         with open(self.config["REPO_NAMES_FILE"]) as repo_names:
             for repo in repo_names:
-                self.repo_names.add(repo.strip())
+                self.repo_names.append(repo.strip())
 
     def write_repo_names_to_file(self):
         with open(self.config["REPO_NAMES_FILE"], "w") as repo_names:
@@ -64,20 +64,26 @@ class Search:
             self.check_search_rate()
             github = Github(self.config["TOKEN"])
 
+            repos = set()
             page_count = 0
+            query = "pushed: " + \
+                    str(datetime.datetime.now()
+                        - datetime.timedelta(days=self.config["TIME_SPAN"])) + \
+                    " " + self.query
             while page_count < self.config["MAX_PAGES"]:
-                result = github.search_repositories(self.query)
+                result = github.search_repositories(query)
                 repo_count = 0
                 page = 1
                 # Can only read max repos at a time
                 while repo_count <= self.config["MAX_REPOS"]:
                     for repo in result.get_page(page):
-                        self.repo_names.add(repo.full_name)
+                        repos.add(repo.full_name)
                         repo_count += 1
                         page_count += 1
                     page += 1
                 self.go_to_sleep("Quick nap before resume",
                                  self.config["QUICK_SLEEP"])
+            self.repo_names = list(repos)
             self.write_repo_names_to_file()
         except RuntimeError:
             self.go_to_sleep(
@@ -91,9 +97,13 @@ class Search:
             github = Github(self.config["TOKEN"])
 
             counter = 0
-            for repo in self.repo_names:
+            i = 0
+            while i < len(self.repo_names):
+                query = self.query
                 try:
-                    query = self.query + " repo:" + repo
+                    while len(query) < 256:
+                        query += " repo:" + self.repo_names[i]
+                        i += 1
                     result = github.search_code(query)
 
                     if result.totalCount > 0:
@@ -103,6 +113,7 @@ class Search:
                     if counter % 15 == 0:
                         self.go_to_sleep("Quick nap before resume",
                                          self.config["QUICK_SLEEP"])
+                    i += 1
                 except RuntimeError:
                     self.go_to_sleep(
                         "Error: abuse detection mechanism detected.",
