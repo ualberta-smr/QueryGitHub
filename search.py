@@ -5,10 +5,11 @@ import datetime
 
 class Search:
 
-    def __init__(self, config_file, query):
+    def __init__(self, config_file, query, search):
 
         self.config = self.read_config(config_file)
         self.query = query
+        self.search = search
         self.repo_names = []
 
     @staticmethod
@@ -66,10 +67,8 @@ class Search:
 
             repos = set()
             page_count = 0
-            query = "pushed: " + \
-                    str(datetime.datetime.now()
-                        - datetime.timedelta(days=self.config["TIME_SPAN"])) + \
-                    " " + self.query
+            query = self.query + " pushed:>=" + (datetime.datetime.now() -
+                                                 datetime.timedelta(days=self.config["TIME_SPAN"])).strftime("%Y-%m-%d")
             while page_count < self.config["MAX_PAGES"]:
                 result = github.search_repositories(query)
                 repo_count = 0
@@ -99,7 +98,7 @@ class Search:
             counter = 0
             i = 0
             while i < len(self.repo_names):
-                query = self.query
+                query = self.search
                 try:
                     while len(query) < 256:
                         temp_query = query + " repo:" + self.repo_names[i]

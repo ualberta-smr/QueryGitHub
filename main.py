@@ -2,6 +2,19 @@ import argparse
 from search import Search
 
 
+def prepare_search(search_string):
+
+    char_list = ["\""]
+    for char in search_string:
+        if char == "\"" or char == "'":
+            char_list.append("\\")
+        char_list.append(char)
+
+    char_list.append("\"")
+
+    return "".join(char_list)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="GitHub search helper. Program will ask for a input query. "
@@ -17,7 +30,9 @@ def main():
 
     query = input("What is your search query? ")
     query = query.replace(" ", "+")
-    pipeline = Search("query_config.ini", query)
+    search = input("What is the code you are searching for? ")
+    search = prepare_search(search)
+    pipeline = Search("query_config.ini", query, search)
 
     run_type = parser.parse_args().type
     if run_type == 1:
