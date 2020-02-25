@@ -11,6 +11,7 @@ class Search:
         self.query = query
         self.search = search
         self.repo_names = []
+        self.file_names = []
 
     @staticmethod
     def read_config(config_file):
@@ -45,16 +46,17 @@ class Search:
             for repo in repo_names:
                 self.repo_names.append(repo.strip())
 
-    def write_repo_names_to_file(self):
-        with open(self.config["REPO_NAMES_FILE"], "w") as repo_names:
-            for repo in self.repo_names:
+    @staticmethod
+    def write_list_to_file(filename, lst):
+        with open(filename, "w") as repo_names:
+            for repo in lst:
                 repo_names.write(repo + "\n")
 
     def check_search_rate(self):
         search_rate = Github(self.config["TOKEN"]).get_rate_limit().search
         if search_rate.remaining == 0:
             print("You have 0/%i API calls remaining. Reset time: %s"
-                  % (search_rate.limit, search_rate.reset))
+                  % (search_rate.limit, search_rate.reset.replace(tzinfo=datetime.timezone.utc).astimezone()))
             raise RuntimeError
         else:
             print("You have %i/%i API calls remaining"
@@ -65,25 +67,54 @@ class Search:
             self.check_search_rate()
             github = Github(self.config["TOKEN"])
 
-            repos = set()
-            page_count = 0
+            potential_repos = set()
+            issue_repos = set()
             query = self.query + " pushed:>=" + (datetime.datetime.now() -
-                                                 datetime.timedelta(days=self.config["TIME_SPAN"])).strftime("%Y-%m-%d")
-            while page_count < self.config["MAX_PAGES"]:
-                result = github.search_repositories(query)
+                                                 datetime.timedelta(days=self.config["TIME_SPAN"])
+                                                 ).strftime("%Y-%m-%d") + " stars:>=5"
+            result = github.search_repositories(query)
+            if result.totalCount > 0:
                 repo_count = 0
                 page = 1
                 # Can only read max repos at a time
-                while repo_count <= self.config["MAX_REPOS"]:
-                    for repo in result.get_page(page):
-                        repos.add(repo.full_name)
-                        repo_count += 1
-                        page_count += 1
-                    page += 1
+                while repo_count < self.config["MAX_RESULTS"]:
+                    while repo_count <= self.config["MAX_REPOS"]:
+                        for repo in result.get_page(page):
+                            potential_repos.add(repo.full_name)
+                            repo_count += 1
+                        page += 1
+
+                    self.go_to_sleep("Quick nap before resume",
+                                     self.config["QUICK_SLEEP"])
                 self.go_to_sleep("Quick nap before resume",
                                  self.config["QUICK_SLEEP"])
-            self.repo_names = list(repos)
-            self.write_repo_names_to_file()
+
+                # Loop through potential repos and find ones that have closed Pull Requests
+                i = 0
+                page = 1
+                repo_count = 0
+                issue_query = "type:pr state:closed"
+                potential_repo_list = list(potential_repos)
+                while i < len(potential_repos):
+                    query = issue_query
+                    while len(query) < 256:
+                        temp_query = query + " repo:" + potential_repo_list[i]
+                        if len(temp_query) > 256:
+                            break
+                        else:
+                            query = temp_query
+                            i += 1
+
+                    result = github.search_issues(query)
+                    while repo_count <= self.config["MAX_REPOS"]:
+                        for repo in result.get_page(page):
+                            issue_repos.add(repo.full_name)
+                            repo_count += 1
+                        page += 1
+                    self.go_to_sleep("Quick nap before resume",
+                                     self.config["QUICK_SLEEP"])
+            self.repo_names = list(potential_repos.intersection(issue_repos))
+            self.write_list_to_file(self.config["REPO_NAMES_FILE"], self.repo_names)
         except RuntimeError:
             self.go_to_sleep(
                 "Error: abuse detection mechanism detected.",
@@ -95,8 +126,8 @@ class Search:
             self.read_repo_names()
             github = Github(self.config["TOKEN"])
 
-            counter = 0
             i = 0
+            files = set()
             while i < len(self.repo_names):
                 query = self.search
                 try:
@@ -110,11 +141,10 @@ class Search:
 
                     result = github.search_code(query)
 
-                    if result.totalCount > 0:
-                        print(result)
+                    for contentFile in result:
+                        files.add(contentFile.html_url)
 
-                    counter += 1
-                    if counter % 15 == 0:
+                    if github.get_rate_limit().search.remaining == 0:
                         self.go_to_sleep("Quick nap before resume",
                                          self.config["QUICK_SLEEP"])
                     i += 1
@@ -122,6 +152,8 @@ class Search:
                     self.go_to_sleep(
                         "Error: abuse detection mechanism detected.",
                         self.config["ERROR_SLEEP"])
+            self.file_names = list(files)
+            self.write_list_to_file(self.config["FILE_NAMES_FILE"], self.file_names)
         except RuntimeError:
             self.go_to_sleep(
                 "Error: abuse detection mechanism detected.",
