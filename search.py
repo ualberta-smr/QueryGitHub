@@ -1,6 +1,7 @@
 from github import Github
 import time
 import datetime
+import re
 
 
 class Search:
@@ -76,49 +77,40 @@ class Search:
             if result.totalCount > 0:
                 repo_count = 0
                 page = 1
-                # Can only read max repos at a time
+                # Can only read in sets of 30 so max is 990 results
                 while repo_count < self.config["MAX_RESULTS"]:
-                    while repo_count <= self.config["MAX_REPOS"]:
+                    try:
                         for repo in result.get_page(page):
                             potential_repos.add(repo.full_name)
                             repo_count += 1
                         page += 1
-
-                    self.go_to_sleep("Quick nap before resume",
-                                     self.config["QUICK_SLEEP"])
-                self.go_to_sleep("Quick nap before resume",
-                                 self.config["QUICK_SLEEP"])
-
+                    except Exception as e:
+                        print(e)
+                        match = re.match("[0-9]+", str(e))
+                        if match.group() == '422':
+                            break
+                        self.go_to_sleep("Error when retrieving repos", self.config["QUICK_SLEEP"])
+                self.go_to_sleep("Quick nap after getting repos, before checking the PRs", self.config["QUICK_SLEEP"])
                 # Loop through potential repos and find ones that have closed Pull Requests
                 i = 0
-                page = 1
-                repo_count = 0
                 issue_query = "type:pr state:closed"
                 potential_repo_list = list(potential_repos)
                 while i < len(potential_repos):
-                    query = issue_query
-                    while len(query) < 256:
-                        temp_query = query + " repo:" + potential_repo_list[i]
-                        if len(temp_query) > 256:
-                            break
-                        else:
-                            query = temp_query
-                            i += 1
-
-                    result = github.search_issues(query)
-                    while repo_count <= self.config["MAX_REPOS"]:
-                        for repo in result.get_page(page):
-                            issue_repos.add(repo.full_name)
-                            repo_count += 1
-                        page += 1
-                    self.go_to_sleep("Quick nap before resume",
-                                     self.config["QUICK_SLEEP"])
+                    try:
+                        query = issue_query + " repo:" + potential_repo_list[i]
+                        result = github.search_issues(query)
+                        if result.totalCount > 0:
+                            issue_repos.add(potential_repo_list[i])
+                        i += 1
+                    except Exception as e:
+                        print(e)
+                        print("%i/%i repos checked" % (i, len(potential_repos)))
+                        self.go_to_sleep("Error when checking PRs", self.config["QUICK_SLEEP"])
+                self.go_to_sleep("Quick nap after getting repos, before checking the PRs", self.config["QUICK_SLEEP"])
             self.repo_names = list(potential_repos.intersection(issue_repos))
             self.write_list_to_file(self.config["REPO_NAMES_FILE"], self.repo_names)
         except RuntimeError:
-            self.go_to_sleep(
-                "Error: abuse detection mechanism detected.",
-                self.config["ERROR_SLEEP"])
+            self.go_to_sleep("Error: abuse detection mechanism detected.", self.config["ERROR_SLEEP"])
 
     def find_code_in_repo(self):
         try:
@@ -127,34 +119,34 @@ class Search:
             github = Github(self.config["TOKEN"])
 
             i = 0
+            starting_i = 0
             files = set()
             while i < len(self.repo_names):
                 query = self.search
                 try:
-                    while len(query) < 256:
+                    # Save the index we started at in case we get an error
+                    starting_i = i
+                    # Add repo names up to the 256 char limit
+                    while len(query) < 256 and i < len(self.repo_names):
                         temp_query = query + " repo:" + self.repo_names[i]
                         if len(temp_query) > 256:
                             break
                         else:
                             query = temp_query
                             i += 1
-
+                    # Search and add the files which contain the code
                     result = github.search_code(query)
-
                     for contentFile in result:
                         files.add(contentFile.html_url)
-
-                    if github.get_rate_limit().search.remaining == 0:
-                        self.go_to_sleep("Quick nap before resume",
-                                         self.config["QUICK_SLEEP"])
                     i += 1
-                except RuntimeError:
-                    self.go_to_sleep(
-                        "Error: abuse detection mechanism detected.",
-                        self.config["ERROR_SLEEP"])
+                except Exception as e:
+                    print(e)
+                    # If we get an error then reset the index
+                    i = starting_i
+                    print("%i/%i repos analyzed" % (i, len(self.repo_names)))
+                    self.go_to_sleep("Error when searching for code", self.config["QUICK_SLEEP"])
+
             self.file_names = list(files)
             self.write_list_to_file(self.config["FILE_NAMES_FILE"], self.file_names)
         except RuntimeError:
-            self.go_to_sleep(
-                "Error: abuse detection mechanism detected.",
-                self.config["ERROR_SLEEP"])
+            self.go_to_sleep("Error: abuse detection mechanism detected.", self.config["ERROR_SLEEP"])
