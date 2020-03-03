@@ -122,7 +122,7 @@ class Search:
             starting_i = 0
             files = set()
             while i < len(self.repo_names):
-                query = self.search
+                query = self.search + " in:file"
                 try:
                     # Save the index we started at in case we get an error
                     starting_i = i
@@ -137,7 +137,12 @@ class Search:
                     # Search and add the files which contain the code
                     result = github.search_code(query)
                     for contentFile in result:
-                        files.add(contentFile.html_url)
+                        try:
+                            if contentFile.decoded_content.decode().find(self.search) != -1:
+                                files.add(contentFile.html_url)
+                        except Exception as e:
+                            print(e)
+                            self.go_to_sleep("Error retrieving htmlUrl from contentFile", self.config["QUICK_SLEEP"])
                     i += 1
                 except Exception as e:
                     print(e)
