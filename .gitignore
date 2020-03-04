@@ -130,3 +130,10 @@ dmypy.json
 
 # Jetbrains project specific settings
 .idea
+
+# Eclipse settings
+.project
+.pydevproject
+
+# Ignore output files
+*.txt
