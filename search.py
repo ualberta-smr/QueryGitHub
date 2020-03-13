@@ -138,7 +138,13 @@ class Search:
                     result = github.search_code(query)
                     for contentFile in result:
                         try:
-                            if contentFile.decoded_content.decode().find(self.search) != -1:
+                            add_file = True
+                            for word in self.search.split():
+                                # All words in the search must be found in the file contents
+                                if contentFile.decoded_content.decode().find(word) == -1:
+                                    add_file = False
+                                    break
+                            if add_file:
                                 files.add(contentFile.html_url)
                         except Exception as e:
                             print(e)

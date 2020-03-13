@@ -40,8 +40,10 @@ def main():
         pipeline.find_code_in_repo()
     elif run_type == 2:
         pipeline.find_repos()
-    else:
+    elif run_type == 3:
         pipeline.find_code_in_repo()
+    else:
+        pipeline.check_search_rate()
 
 
 main()
