@@ -2,6 +2,10 @@ from github import Github
 import time
 import datetime
 import re
+import git
+import os
+import subprocess
+import shutil
 
 
 class Search:
@@ -155,3 +159,34 @@ class Search:
             self.write_list_to_file(self.config["FILE_NAMES_FILE"], self.file_names)
         except RuntimeError:
             self.go_to_sleep("Error: abuse detection mechanism detected.", self.config["ERROR_SLEEP"])
+
+    def find_code_with_codeql(self):
+        with open(self.config["REPO_URLS_FILE"]) as repo_urls:
+            for repo in repo_urls:
+                self.repo_urls.append(repo.strip())
+
+        for repo_name, git_url in self.urls:
+            temp_path = "tmp/" + repo_name
+            if not os.path.exists(temp_path):
+                os.makedirs(temp_path)
+            git.Repo.clone_from(git_url, temp_path)
+
+            # Create the codeql database to run codeql queries on
+            codeql_db = "codeql database create --language=" + "java" + " --source-root " + temp_path + repo_name
+            subprocess.Popen(codeql_db.split()).wait()
+
+            # To create a codeql database to use in eclipse ide
+            # codeql database bundle --include-uncompressed-source -o <output-zip> <codeql-database>
+
+            ql_file = None
+            if language == 'javascript':
+                ql_file = "javascript.ql"
+
+            # Run the query in the query file on the cloned repository
+            codeql_analysis = "codeql database analyze " + repo_name + " " \
+                              + ql_file + " --format=csv --output=" + repo_name + ".csv"
+            subprocess.Popen(codeql_analysis.split()).wait()
+
+            # Remove the cloned repository
+            shutil.rmtree(temp_path)
+            shutil.rmtree(repo_name)
